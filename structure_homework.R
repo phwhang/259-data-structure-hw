@@ -1,28 +1,33 @@
 #PSYC 259 Homework 3 - Data Structure
 #For full credit, provide answers for at least 8/11 questions
 
-#List names of students collaborating with: 
+#List names of students collaborating with: Just me (Priscilla Whang)
 
 ### SETUP: RUN THIS BEFORE STARTING ----------
 
-install.packages("rvest")
-
 #Load packages
+library(rvest)
 library(tidyverse)
 library(lubridate)
 library(rvest)
 
 # Scrape the data for the new rolling stone top 500 list
-url <- "https://stuarte.co/2021/2021-full-list-rolling-stones-top-500-songs-of-all-time-updated/"
-rs_new <- url %>% read_html() %>% html_nodes(xpath='//*[@id="post-14376"]/div[2]/div[2]/table') %>% html_table() %>% pluck(1)
+# url <- "https://stuarte.co/2021/2021-full-list-rolling-stones-top-500-songs-of-all-time-updated/"
+# rs_new <- url %>%  read_html() %>% html_nodes(xpath='//*[@id="post-14376"]/div[2]/div[2]/table') %>% html_table() %>% pluck(1)
 
 # Scrape the data for the old rolling stone top 500 list
 url_old <- "https://www.cs.ubc.ca/~davet/music/list/Best9.html"
-rs_old <- url_old %>% read_html() %>% html_nodes(xpath='/html/body/table[2]') %>% html_table() %>% pluck(1) %>% 
-  select(1, 4, 3, 7) %>% rename(Rank = X1, Artist = X3, Song = X4, Year = X7) %>% filter(Year != "YEAR") 
+rs_old <- url_old %>% 
+  read_html() %>% 
+  html_nodes(xpath='/html/body/table[2]') %>% 
+  html_table() %>% 
+  pluck(1) %>% 
+  select(1, 4, 3, 7) %>% 
+  rename(Rank = X1, Artist = X3, Song = X4, Year = X7) %>% 
+  filter(Year != "YEAR") 
 
 # If there's a security error, add:
-#url %>% httr::GET(config = httr::config(ssl_verifypeer = FALSE)) %>% read_html()
+# url %>% httr::GET(config = httr::config(ssl_verifypeer = FALSE)) %>% read_html()
 
 #OR
 load("rs_data.RData")
@@ -39,7 +44,28 @@ load("rs_data.RData")
 
 #ANSWER
 
+# check full_join doc
+?full_join
 
+# column names
+names(rs_new) # 500 obs. 4 vars.
+names(rs_old) # 500 obs. 4 vars.
+
+# join
+rs_joined_orig <- full_join(rs_new, rs_old,
+                            by = c('Artist', 'Song')) # 860 obs. 6 vars.
+
+# view first 20
+rs_joined_orig %>% 
+  head(20)
+
+# how many rows?
+rs_joined_orig %>% 
+  nrow() # 860 rows
+
+# some problems: 
+# (1) upon joining, it added .x and .y (confusing; not sure which is new vs. old)
+# (2) some duplicates, e.g., song '(Sittin' On) the Dock of the Bay' and '(Sittin’ on) The Dock of the Bay'
 
 ### Question 2 ---------- 
 
@@ -51,6 +77,29 @@ load("rs_data.RData")
 
 #ANSWER
 
+# add source indicators
+rs_new <- rs_new %>% 
+  mutate(Source = 'New')
+rs_old <- rs_old %>% 
+  mutate(Source = 'Old')
+
+# for compatibility, make Rank and Year integers
+typeof(rs_old$Rank) # "character"
+typeof(rs_old$Year) # "character"
+
+rs_old <- rs_old %>%
+  mutate(Rank = as.integer(Rank),
+         Year = as.integer(Year))
+
+typeof(rs_old$Rank) # "integer"
+typeof(rs_old$Year) # "integer"
+
+# now, bind!
+rs_bind <- bind_rows(rs_new, rs_old) # 1000 obs. 5 vars.
+
+# view first 20
+rs_bind %>% 
+  head(20)
 
 ### Question 3 ----------
 
@@ -63,6 +112,75 @@ load("rs_data.RData")
 
 #ANSWER
 
+# check docs
+?str_remove_all
+?str_replace_all
+?str_to_lower
+?str_trim
+
+## remove 'The'
+
+# see rows with 'The'
+rs_bind %>% 
+  filter(str_detect(Artist, 'The') | str_detect(Song, 'The'))
+
+# one example
+rs_bind[rs_bind$Song == 'Baby Love', ] # Artist: 'The Supremes'
+
+# str_remove_all
+rs_bind <- rs_bind %>% 
+  mutate(across(c(Artist, Song), 
+                ~ str_squish(str_remove_all(.x, "\\bThe\\b"))))
+
+# check
+rs_bind[rs_bind$Song == 'Baby Love', ] # Artist:'Supremes'
+
+## replace '&' with 'and'
+
+# see rows with '&'
+rs_bind %>% 
+  filter(str_detect(Artist, '&') | str_detect(Song, '&'))
+
+# one example
+rs_bind[rs_bind$Song == 'September', ] # Artist: 'Earth, Wind & Fire'
+
+# string_replace_all
+rs_bind <- rs_bind %>% 
+  mutate(across(c(Artist, Song), 
+                ~ str_replace_all(.x, '&', 'and')))
+
+# check
+rs_bind[rs_bind$Song == 'September', ] # Artist: 'Earth, Wind and Fire'
+
+## remove punctuation
+
+# see rows with punctuation (e.g., comma)
+rs_bind %>% 
+  filter(str_detect(Artist, ',') | str_detect(Song, ','))
+
+# one example
+rs_bind[rs_bind$Song == 'Sugar, We’re Going Down', ] # Song: 'Sugar, We’re Going Down'
+
+# str_remove_all
+rs_bind <- rs_bind %>% 
+  mutate(across(c(Artist, Song), 
+                ~ str_remove_all(.x, "[[:punct:]]")))
+
+# check
+rs_bind[rs_bind$Song == 'Sugar Were Going Down', ] # no more punctuation (, and ')
+
+# pre-check
+rs_bind %>% 
+  head(20) # e.g., 'Baby Love'
+
+# lowercase, remove trailing white spaces
+rs_bind <- rs_bind %>% 
+  mutate(across(c(Artist, Song), 
+                ~ str_to_lower(str_trim(.x))))
+
+# post-check
+rs_bind %>% 
+  head(20) # e.g., 'baby love'
 
 ### Question 4 ----------
 
@@ -76,6 +194,27 @@ load("rs_data.RData")
 
 #ANSWER
 
+# split (slice)
+rs_old <- rs_bind %>% 
+  slice_head(n = 500) # 500 obs. 5 vars.
+rs_new <- rs_bind %>% 
+  slice_tail(n = 500) # 500 obs. 5 vars.
+
+# join
+?full_join
+
+rs_joined <- full_join(rs_old, rs_new, 
+                       by = c('Artist', 'Song'), 
+                       suffix = c('_Old', '_New'))
+
+# check first 20
+rs_joined %>% 
+  head(20) # has _Old and _New now!
+
+
+# use nrow to check
+rs_joined %>%
+  nrow() # 799 obs. 8 vars.
 
 ### Question 5 ----------
 
@@ -89,6 +228,20 @@ load("rs_data.RData")
 
 #ANSWER
 
+names(rs_joined)
+# there's no Source column?
+# but if there was, I'd run: 
+# rs_joined <- rs_joined %>% select(-Source)
+
+# clean up
+rs_joined <- rs_joined %>% 
+  filter(!is.na(Rank_New) & !is.na(Rank_Old)) %>% # only keep non-NAs
+  mutate(Rank_Change = Rank_Old - Rank_New) %>% # create Rank_change
+  arrange(Rank_Change) # sort by Rank_Change
+
+# view first 20
+rs_joined %>% 
+  head(20)
 
 ### Question 6 ----------
 
@@ -100,7 +253,22 @@ load("rs_data.RData")
 
 #ANSWER
 
+# create decade var.
+rs_joined <- rs_joined %>%
+  mutate(Decade = paste0(floor(Year_Old / 10) * 10, 's'))
 
+# make as factor
+rs_joined$Decade <- as.factor(rs_joined$Decade)
+
+table(rs_joined$Decade) # e.g., 1940s
+
+# group by decade and summarize mean rank_change
+rs_joined %>%
+  group_by(Decade) %>%
+  summarize(Mean_Rank_Change = mean(Rank_Change, na.rm = T)) %>%
+  arrange(desc(Mean_Rank_Change)) # Which decade improved the most?
+
+# 1950s improved the most (118 mean rank change)
 
 ### Question 7 ----------
 
@@ -110,8 +278,21 @@ load("rs_data.RData")
 # proportion of songs in each of the top three decades (vs. all the rest)
 
 #ANSWER
+?fct_count
+?fct_lump
 
+# number of songs within each decade
+fct_count(rs_joined$Decade)
 
+# limit decade to 3 levels (plus other)
+rs_joined <- rs_joined %>%
+  mutate(Decade_Lump = fct_lump(Decade, n = 3))
+
+# check
+table(rs_joined$Decade_Lump)
+
+# proportion of songs
+fct_count(rs_joined$Decade_Lump, prop = TRUE)
 
 ### Question 8 ---------- 
 
@@ -121,6 +302,17 @@ load("rs_data.RData")
 
 #ANSWER
 
+# load data
+top20 <- read_csv('top_20.csv')
+
+top20 %>% 
+  head(20)
+
+?parse_date_time
+
+top20 <- top20 %>%
+  mutate(Release_Date = parse_date_time(Release_Date, 
+                                        orders = c('Ymd', 'mdY', 'dmy')))
 
 ### Question 9 --------
 
